@@ -3,16 +3,18 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Greybox Range: a three.js FPS starter</title>
+<title>BREACH PROTOCOL: Tactical FPS</title>
+<link rel="icon" href="data:,">
 <style>
-  /* Look plan: canvas, surface, hairline, ink, muted and one accent. Every colour below is one of the six. */
   :root {
-    --canvas: #14161a;
-    --surface: #1e2228;
-    --hairline: #2c323a;
-    --ink: #e9e6df;
-    --muted: #98a0a8;
+    --canvas: #1c2026;
+    --surface: #262c36;
+    --hairline: #38404c;
+    --ink: #f0ece4;
+    --muted: #a0a8b0;
     --accent: #f0a830;
+    --teamA: #388bfd;
+    --teamB: #f85149;
     --radius-panel: 4px;
     --radius-control: 8px;
     --font-ui: system-ui, -apple-system, 'Segoe UI', sans-serif;
@@ -45,6 +47,24 @@
   #hitmarker i:nth-child(3) { top: 12px; left: 0; height: 2px; width: 8px; }
   #hitmarker i:nth-child(4) { top: 12px; right: 0; height: 2px; width: 8px; }
 
+  #status-bar {
+    position: fixed;
+    top: 20px;
+    left: 32px;
+    right: 32px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-family: var(--font-readout);
+    font-size: 15px;
+    color: var(--muted);
+    background: color-mix(in srgb, var(--surface) 80%, transparent);
+    padding: 10px 16px;
+    border: 1px solid var(--hairline);
+    border-radius: var(--radius-panel);
+  }
+  #status-bar b { color: var(--ink); font-weight: 500; }
+
   #ammo {
     position: fixed;
     right: 32px;
@@ -71,6 +91,21 @@
   }
   #score b { color: var(--ink); font-weight: 500; }
 
+  #plant-bar {
+    position: fixed;
+    left: 50%;
+    bottom: 120px;
+    transform: translateX(-50%);
+    width: 200px;
+    height: 10px;
+    background: var(--surface);
+    border: 1px solid var(--hairline);
+    border-radius: 5px;
+    overflow: hidden;
+  }
+  #plant-bar[hidden] { display: none; }
+  #plant-fill { width: 0%; height: 100%; background: var(--accent); transition: width 50ms linear; }
+
   .overlay {
     position: fixed;
     inset: 0;
@@ -78,10 +113,11 @@
     place-items: center;
     padding: 24px;
     background: color-mix(in srgb, var(--canvas) 86%, transparent);
+    pointer-events: auto;
   }
   .overlay[hidden] { display: none; }
   .panel {
-    width: min(420px, 100%);
+    width: min(440px, 100%);
     padding: 32px;
     background: var(--surface);
     border: 1px solid var(--hairline);
@@ -116,7 +152,6 @@
     transition: background-color 120ms ease;
   }
   #play:hover { background: var(--ink); border-color: var(--ink); }
-  #play:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
   .keys {
     margin: 24px 0 0;
@@ -139,34 +174,67 @@
     text-align: center;
   }
 
-  @media (prefers-reduced-motion: reduce) {
-    #hitmarker, #play { transition-duration: 0.01ms; }
+  .menu-overlay {
+    position: fixed;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    background: rgba(20, 22, 26, 0.9);
+    z-index: 100;
+    pointer-events: auto;
   }
+  .menu-overlay[hidden] { display: none; }
 </style>
 </head>
 <body>
 <div id="game"></div>
 
 <div id="hud" aria-hidden="true">
+  <div id="status-bar">
+    <div>HP: <b id="health-value">100</b> | AP: <b id="armor-value">100</b></div>
+    <div>TIME: <b id="timer-value">1:45</b></div>
+    <div>ROUND <b id="round-value">1</b> (<span id="status-value">BUY</span>)</div>
+    <div>CASH: <b id="money-value">$800</b></div>
+  </div>
   <div id="crosshair"><i></i><i></i><i></i><i></i></div>
   <div id="hitmarker"><i></i><i></i><i></i><i></i></div>
   <div id="ammo"><span id="ammo-mag">30</span><span id="ammo-reserve">/ 90</span></div>
   <div id="score">Score <b id="score-value">0</b></div>
+  <div id="plant-bar" hidden><div id="plant-fill"></div></div>
 </div>
 
 <div id="overlay" class="overlay">
   <section class="panel" role="dialog" aria-modal="true" aria-labelledby="overlay-title">
-    <h1 id="overlay-title">Greybox Range</h1>
-    <p id="overlay-copy">A plain room, one rifle and four targets. Click to play.</p>
-    <button id="play" type="button">Click to play</button>
+    <h1 id="overlay-title">BREACH PROTOCOL</h1>
+    <p id="overlay-copy">Round-based tactical FPS. Click to deploy.</p>
+    <button id="play" type="button">Deploy</button>
     <ul class="keys">
       <li><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> Move</li>
-      <li><kbd>Mouse</kbd> Look</li>
-      <li><kbd>Click</kbd> Fire</li>
-      <li><kbd>R</kbd> Reload</li>
-      <li><kbd>Ctrl</kbd> Crouch</li>
-      <li><kbd>Space</kbd> Jump</li>
+      <li><kbd>Shift</kbd> Sprint | <kbd>Ctrl</kbd> Crouch | <kbd>Space</kbd> Jump</li>
+      <li><kbd>Mouse</kbd> Look | <kbd>Click</kbd> Fire</li>
+      <li><kbd>R</kbd> Reload | <kbd>E</kbd> Plant Bomb (at Site A/B)</li>
+      <li><kbd>1</kbd>-<kbd>4</kbd> Weapons | <kbd>B</kbd> Buy Menu</li>
     </ul>
+  </section>
+</div>
+
+<div id="buy-menu" class="menu-overlay" hidden>
+  <section class="panel">
+    <h1>Buy Phase Menu</h1>
+    <p>Press <kbd>B</kbd> to close. Select equipment:</p>
+    <ul class="keys">
+      <li><kbd>1</kbd> Tactician .45 ($400)</li>
+      <li><kbd>2</kbd> Viper-9 SMG ($1200)</li>
+      <li><kbd>3</kbd> Breach Carbine ($2900)</li>
+      <li><kbd>4</kbd> Sentinel DMR ($4500)</li>
+    </ul>
+  </section>
+</div>
+
+<div id="scoreboard" class="menu-overlay" hidden>
+  <section class="panel">
+    <h1>Match Scoreboard</h1>
+    <p>Attackers vs Defenders</p>
   </section>
 </div>
 
