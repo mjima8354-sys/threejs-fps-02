@@ -2,3 +2,6 @@
 .build-session*.log
 out/
 node_modules/
+.shots.cjs
+.gemini-build-fps.md
+.gemini-*.log
